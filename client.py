@@ -44,7 +44,12 @@ def start_client():
         # 2. Discovery (UDP)
         print("Client started, listening for offer requests...")
         u_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        u_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        try:
+            # Try the Linux/Mac way first
+            u_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except AttributeError:
+            # Fallback for Windows (uses SO_REUSEADDR instead)
+            u_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         u_sock.bind(('', UDP_PORT))
         
         server_addr = None
@@ -56,6 +61,7 @@ def start_client():
                 cookie, m_type, port, srv = struct.unpack('!IbH32s', data[:39])
                 if cookie == MAGIC_COOKIE and m_type == 0x2:
                     print(f"Received offer from {addr[0]} ({srv.decode().strip()})")
+                    sound_player.play('connect')
                     server_addr = addr[0]
                     server_port = port
                     break
@@ -117,7 +123,11 @@ def start_client():
                         if res != 0x0: 
                             status = {0x3:'WIN', 0x2:'LOSS', 0x1:'TIE'}.get(res, "UNKNOWN")
                             print(f"Result: {status}")
-                            if res == 0x3: wins += 1
+                            if res == 0x3:
+                                wins += 1
+                                sound_player.play('win')
+                            elif res == 0x2:
+                                sound_player.play('lose')
                             round_active = False
                             break # Exit chunk loop, move to next round
 
@@ -126,6 +136,11 @@ def start_client():
                         if cards_received >= 3 and not player_done:
                             move = input("Hit or Stand? (h/s): ").lower()
                             decision = b"Hittt" if move == 'h' else b"Stand"
+                            if move == 'h':
+                                sound_player.play('hit') # "Another One"
+                            elif move == 's':
+                                sound_player.play('stand') # "You Shall Not Pass"
+                                player_done = True
                             t_sock.sendall(struct.pack('!IbB5s', MAGIC_COOKIE, 0x4, 0, decision))
                             
                             if move == 's':
